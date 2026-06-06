@@ -1,0 +1,82 @@
+{
+    "Hook": {
+        "count": 38,
+        "corrupt_count": 0,
+        "total_size_mb": 70.40696430206299,
+        "avg_size_mb": 1.8528148500542891,
+        "min_size_mb": 0.5215082168579102,
+        "max_size_mb": 2.340761184692383,
+        "total_duration_sec": 53.178125,
+        "avg_duration_sec": 1.3994243421052632,
+        "min_duration_sec": 0.7507499999999999,
+        "max_duration_sec": 3.9622916666666663,
+        "resolutions_dist": {
+            "1280x720": 38
+        },
+        "fps_dist": {
+            "23.976023976023978": 38
+        },
+        "avg_fps": 23.976023976023974,
+        "avg_frames": 33.55263157894737
+    },
+    "Jab": {
+        "count": 44,
+        "corrupt_count": 0,
+        "total_size_mb": 65.63800430297852,
+        "avg_size_mb": 1.4917728250676936,
+        "min_size_mb": 0.39011383056640625,
+        "max_size_mb": 2.3665409088134766,
+        "total_duration_sec": 49.00729166666665,
+        "avg_duration_sec": 1.113802083333333,
+        "min_duration_sec": 0.5422083333333333,
+        "max_duration_sec": 1.9602916666666665,
+        "resolutions_dist": {
+            "1280x720": 44
+        },
+        "fps_dist": {
+            "23.976023976023978": 44
+        },
+        "avg_fps": 23.976023976023978,
+        "avg_frames": 26.704545454545453
+    },
+    "Straight": {
+        "count": 42,
+        "corrupt_count": 0,
+        "total_size_mb": 68.15731716156006,
+        "avg_size_mb": 1.62279326575143,
+        "min_size_mb": 0.5661420822143555,
+        "max_size_mb": 2.2610960006713867,
+        "total_duration_sec": 49.00729166666666,
+        "avg_duration_sec": 1.1668402777777775,
+        "min_duration_sec": 0.8341666666666666,
+        "max_duration_sec": 2.377375,
+        "resolutions_dist": {
+            "1280x720": 42
+        },
+        "fps_dist": {
+            "23.976023976023978": 42
+        },
+        "avg_fps": 23.976023976023978,
+        "avg_frames": 27.976190476190474
+    },
+    "Uppercut": {
+        "count": 48,
+        "corrupt_count": 0,
+        "total_size_mb": 72.17171001434326,
+        "avg_size_mb": 1.5035772919654846,
+        "min_size_mb": 0.5005102157592773,
+        "max_size_mb": 2.4377031326293945,
+        "total_duration_sec": 61.68662500000001,
+        "avg_duration_sec": 1.2851380208333332,
+        "min_duration_sec": 0.875875,
+        "max_duration_sec": 3.169833333333333,
+        "resolutions_dist": {
+            "1280x720": 48
+        },
+        "fps_dist": {
+            "23.976023976023978": 48
+        },
+        "avg_fps": 23.976023976023978,
+        "avg_frames": 30.8125
+    }
+}

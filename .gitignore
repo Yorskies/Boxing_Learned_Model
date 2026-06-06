@@ -1,0 +1,33 @@
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Abaikan file video dataset mentah
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.flv
+*.wmv
+
+# Abaikan direktori dataset mentah (sesuai kebutuhan jika ada)
+RAW/
+Olympic Boxing Punch Classification Video Dataset/
+Data_New/
+Dataset/
+Dataset_Frames/
+Dataset_Rendered/
+Dataset_Unused/
+Dataset_Numpy_old/
+Dataset_Numpy_Normalized_old/
+
+# Dokumen dan cache
+*.docx
+~$*.docx
+*.pdf
+.DS_Store
+
+# Izinkan numpy file
+!*.npy
+!*.npz
