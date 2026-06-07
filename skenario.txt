@@ -1,0 +1,33 @@
+1. Skenario 1: Baseline (Stabil & Aman)
+Skenario ini dirancang sebagai baseline standar untuk melatih model dengan arsitektur dan parameter yang seimbang.
+
+Hidden Size: 64
+Num Layers (BiLSTM): 1
+Batch Size: 8
+Learning Rate (LR): 0.001
+Dropout: 0.3
+Optimizer: Adam
+Epochs: 100
+Learning Rate Scheduler: Tidak digunakan (False)
+2. Skenario 2: Deep & Regularized (Ekstraksi Fitur Kompleks)
+Skenario ini menggunakan model yang lebih lebar (hidden size lebih besar) dan lebih dalam (2 layer BiLSTM) untuk mengekstraksi fitur gerakan tinju yang lebih kompleks, dengan dropout yang lebih tinggi untuk menghindari overfitting.
+
+Hidden Size: 128
+Num Layers (BiLSTM): 2
+Batch Size: 16
+Learning Rate (LR): 0.0005 (lebih kecil agar konvergensi lebih stabil pada model besar)
+Dropout: 0.5 (regularisasi lebih ketat)
+Optimizer: AdamW (dengan weight decay 1e-4 untuk meningkatkan generalisasi)
+Epochs: 150
+Learning Rate Scheduler: Tidak digunakan (False)
+3. Skenario 3: Lightweight & Fast Learner (Pencegahan Overfitting)
+Skenario ini menggunakan arsitektur yang lebih ringan (hidden size kecil) untuk melatih model dengan cepat, dikombinasikan dengan learning rate yang lebih tinggi di awal, namun menggunakan learning rate scheduler untuk menurunkan laju pembelajaran secara berkala agar tidak melewatkan titik optimal.
+
+Hidden Size: 32
+Num Layers (BiLSTM): 1
+Batch Size: 8
+Learning Rate (LR): 0.002 (laju pembelajaran awal lebih cepat)
+Dropout: 0.2
+Optimizer: Adam
+Epochs: 120
+Learning Rate Scheduler: Digunakan (True) (menggunakan StepLR dengan step_size=20 dan gamma=0.5, yang berarti learning rate akan dipotong setengahnya setiap 20 epoch).

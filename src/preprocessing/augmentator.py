@@ -11,7 +11,7 @@ def horizontal_flip_keypoints(sequence):
     flipped_seq = np.copy(sequence)
     
     num_frames = flipped_seq.shape[0]
-    num_landmarks = config.FEATURE_DIM // 4 # Should be 33
+    num_landmarks = config.NUM_LANDMARKS  # 33
     
     # 1. Flip X coordinates
     for i in range(num_landmarks):

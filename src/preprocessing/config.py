@@ -9,8 +9,16 @@ CLASSES = ['Hook', 'Jab', 'Straight', 'Uppercut']
 
 # Model hyperparameters for padding/truncating
 MAX_TIMESTEPS = 30
-# 33 landmarks * 4 variables (x, y, z, visibility) = 132
-FEATURE_DIM = 132
+
+# Raw MediaPipe dimensions: 33 landmarks * 4 variables (x, y, z, visibility) = 132
+NUM_LANDMARKS = 33
+RAW_FEATURE_DIM = NUM_LANDMARKS * 4  # 132
+
+# Engineered features added per frame (elbow angles, velocities, stance, etc.)
+ENGINEERED_FEATURE_DIM = 12
+
+# Total feature dimension fed to the model
+FEATURE_DIM = RAW_FEATURE_DIM + ENGINEERED_FEATURE_DIM  # 144
 
 # Keypoints swap mapping for horizontal flip (Southpaw vs Orthodox)
 # Based on MediaPipe Pose topology

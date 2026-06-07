@@ -1,0 +1,49 @@
+EVALUASI TEKNIS ARSITEKTUR ATTENTION-BiLSTM UNTUK KLASIFIKASI PUKULAN TINJU
+
+Dokumen ini berisi analisis hasil pengujian dari 5 (lima) skenario konfigurasi model Attention-BiLSTM untuk klasifikasi gerakan pukulan tinju (Jab, Straight, Hook, Uppercut). Analisis difokuskan pada perbandingan kinerja teknis masing-masing model dan argumentasi akademis pemilihan model terbaik.
+
+1. Perbandingan Hasil Kelima Skenario Eksperimen
+
+Berikut adalah rangkuman metrik hasil pengujian kelima skenario eksperimen:
+
++----+----------------------+-------------+----------------+------------+---------------+----------+----------+-------------------------------------------------------------+
+| ID | Skenario Konfigurasi | Hidden Size | Jumlah Layers  | Batch Size | Epoch Optimal | Akurasi  | F1-Score | Keterangan                                                  |
++----+----------------------+-------------+----------------+------------+---------------+----------+----------+-------------------------------------------------------------+
+| 1  | Baseline (Best Model)| 64          | 1              | 8          | 14            | 90.62%   | 0.91     | Model sangat efisien dengan konvergensi tercepat.           |
+| 2  | Deep & Regularized   | 128         | 2              | 16         | 21            | 90.62%   | 0.90     | Struktur lebih kompleks tidak meningkatkan akurasi.         |
+| 3  | Lightweight          | 32          | 1              | 8          | 18            | 87.50%   | 0.87     | Mengalami underfitting karena keterbatasan kapasitas memori. |
+| 4  | Ultimate (BS 16)     | 64          | 1              | 16         | 29            | 90.62%   | 0.91     | Performa seimbang, namun membutuhkan epoch latih lebih lama.|
+| 5  | Ultimate (BS 4)      | 64          | 1              | 4          | 24            | 90.62%   | 0.91     | Gradient update fluktuatif akibat batch size terlalu kecil. |
++----+----------------------+-------------+----------------+------------+---------------+----------+----------+-------------------------------------------------------------+
+
+Analisis Teknis Per Skenario:
+
+* Skenario 1 (Baseline)
+  Menggunakan dimensi representasi fitur tersembunyi hidden_size=64, 1 layer BiLSTM, dan ukuran batch 8. Model ini bekerja sangat efisien dalam menangkap hubungan spasial-temporal data kinematik gerakan pukulan tinju. Epoch optimal dicapai sangat cepat pada epoch ke-14, menunjukkan kemampuan fitting yang seimbang tanpa gejala overfitting.
+
+* Skenario 2 (Deep & Regularized)
+  Peningkatan dimensi representasi menjadi hidden_size=128 dan penumpukan layer menjadi 2 layer BiLSTM tidak memberikan dampak positif pada akurasi (tetap tertahan di 90.62%). Sebaliknya, model membutuhkan waktu latih lebih lama (21 epoch) untuk mencapai titik stabil. Hal ini menunjukkan arsitektur yang terlalu kompleks (over-parameterized) tidak efisien untuk struktur dimensi data ini.
+
+* Skenario 3 (Lightweight)
+  Pengurangan kapasitas penyimpanan model (hidden_size=32) terbukti menurunkan akurasi model menjadi 87.50% dengan F1-Score sebesar 0.87. Kapasitas memori model yang kecil membatasi kemampuan Attention-BiLSTM untuk membedakan transisi sudut sendi dan kecepatan ekstrem pada pukulan melingkar seperti Hook dan Uppercut.
+
+* Skenario 4 (Ultimate BS 16)
+  Konfigurasi ini mirip dengan baseline tetapi menggunakan ukuran batch lebih besar (16). Model mencapai performa optimal 90.62% namun membutuhkan waktu iterasi hingga epoch 29 untuk mencapai tingkat konvergensi yang sama.
+
+* Skenario 5 (Ultimate BS 4)
+  Penggunaan ukuran batch 4 menghasilkan estimasi gradien yang lebih acak (stochastic variance tinggi). Meskipun model akhirnya dapat mencapai akurasi optimal 90.62% pada epoch 24, proses pelatihannya kurang stabil karena fluktuasi loss yang tajam antar iterasi.
+
+--------------------------------------------------------------------------------
+
+2. Pemilihan Skenario 1 sebagai Model Terbaik (Best Model)
+
+Berdasarkan analisis performa dari kelima skenario eksperimen di atas, Skenario 1 dipilih sebagai model terbaik untuk diimplementasikan ke dalam sistem produksi (real-time video classification). Keputusan ini didasari oleh beberapa argumen teknis berikut:
+
+2.1. Efisiensi Pelatihan (Konvergensi Tercepat)
+Skenario 1 hanya membutuhkan 14 epoch untuk mencapai akurasi optimal sebesar 90.62% dan F1-Score 0.91. Dibandingkan dengan Skenario 2 (21 epoch), Skenario 4 (29 epoch), dan Skenario 5 (24 epoch), Skenario 1 terbukti menghemat waktu komputasi pelatihan secara signifikan. Hal ini menunjukkan bahwa kombinasi parameter hidden_size=64, layers=1, dan batch_size=8 adalah titik optimal (sweet spot) dalam lanskap optimasi model ini.
+
+2.2. Ringan dan Responsif (Resource-Efficient)
+Dengan hanya menggunakan 1 layer BiLSTM dan 64 unit tersembunyi, ukuran berkas model dan kebutuhan memori komputasi saat inferensi jauh lebih rendah dibandingkan Skenario 2. Karakteristik ini sangat penting ketika model diintegrasikan ke sistem antarmuka pengguna grafis (GUI) yang memproses video frame-by-frame secara real-time menggunakan kamera atau video berkecepatan tinggi.
+
+2.3. Akurasi dan Nilai F1-Score yang Stabil
+Meskipun arsitektur model pada Skenario 1 jauh lebih sederhana dibandingkan Skenario 2 atau Skenario 4, model ini mampu menghasilkan tingkat akurasi (90.62%) dan F1-Score (0.91) yang setara dengan model yang lebih kompleks. Hal ini membuktikan bahwa arsitektur yang lebih sederhana pada Skenario 1 sudah mampu mengekstraksi seluruh pola esensial dari fitur masukan tanpa memerlukan redundansi parameter komputasi.

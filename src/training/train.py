@@ -5,34 +5,45 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import StepLR
-from sklearn.metrics import precision_score, recall_score, f1_score, classification_report
+from sklearn.metrics import precision_score, recall_score, f1_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 
 from dataset import get_dataloaders
 from model import AttentionBiLSTM
 
 def plot_history(history, output_dir):
-    """Fungsi untuk menggambar grafik Loss dan Accuracy dari history training"""
+    """Fungsi untuk menggambar grafik Loss, Accuracy, dan Metrik dari history training"""
     epochs = range(1, len(history['train_loss']) + 1)
     
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(18, 5))
     
     # Plot Loss
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 3, 1)
     plt.plot(epochs, history['train_loss'], 'b-', label='Training Loss')
     plt.plot(epochs, history['val_loss'], 'r-', label='Validation Loss')
-    plt.title('Training and Validation Loss')
+    plt.title('Training & Validation Loss')
     plt.xlabel('Epochs')
     plt.ylabel('Loss')
     plt.legend()
     plt.grid(True)
     
     # Plot Accuracy
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, history['train_acc'], 'b-', label='Training Accuracy')
-    plt.plot(epochs, history['val_acc'], 'r-', label='Validation Accuracy')
-    plt.title('Training and Validation Accuracy')
+    plt.subplot(1, 3, 2)
+    plt.plot(epochs, history['train_acc'], 'b-', label='Training Acc')
+    plt.plot(epochs, history['val_acc'], 'r-', label='Validation Acc')
+    plt.title('Training & Validation Accuracy')
     plt.xlabel('Epochs')
     plt.ylabel('Accuracy (%)')
+    plt.legend()
+    plt.grid(True)
+    
+    # Plot Metrics
+    plt.subplot(1, 3, 3)
+    plt.plot(epochs, history['val_precision'], 'g-', label='Precision')
+    plt.plot(epochs, history['val_recall'], 'm-', label='Recall')
+    plt.plot(epochs, history['val_f1'], 'c-', label='F1-Score')
+    plt.title('Validation Metrics (Macro)')
+    plt.xlabel('Epochs')
+    plt.ylabel('Percentage (%)')
     plt.legend()
     plt.grid(True)
     
@@ -74,8 +85,28 @@ def train(scenario_id, data_dir, num_workers=0):
         optimizer_name = 'Adam'
         epochs = 120
         use_scheduler = True
+    elif scenario_id == 4:
+        print("Mengeksekusi Skenario 4: Skenario Ultimate (Kapasitas + Stabilitas)")
+        hidden_size = 64
+        num_layers = 1
+        batch_size = 16
+        lr = 0.0015
+        dropout = 0.3
+        optimizer_name = 'Adam'
+        epochs = 120
+        use_scheduler = True
+    elif scenario_id == 5:
+        print("Mengeksekusi Skenario 5: Skenario Ultimate (Batch Size 4)")
+        hidden_size = 64
+        num_layers = 1
+        batch_size = 4
+        lr = 0.0015
+        dropout = 0.3
+        optimizer_name = 'Adam'
+        epochs = 120
+        use_scheduler = True
     else:
-        raise ValueError("Scenario ID tidak valid. Pilih 1, 2, atau 3.")
+        raise ValueError("Scenario ID tidak valid. Pilih 1, 2, 3, 4, atau 5.")
 
     # Penataan Direktori Output yang Rapi
     base_results_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'results', f'scenario_{scenario_id}'))
@@ -100,7 +131,7 @@ def train(scenario_id, data_dir, num_workers=0):
     
     # Inisialisasi Model
     model = AttentionBiLSTM(
-        input_size=132, 
+        input_size=144, 
         hidden_size=hidden_size, 
         num_layers=num_layers, 
         num_classes=4, 
@@ -124,10 +155,13 @@ def train(scenario_id, data_dir, num_workers=0):
         'val_precision': [], 'val_recall': [], 'val_f1': []
     }
     
-    patience = 20
+    patience = 25 if scenario_id in [4, 5] else 20
     best_val_acc = 0.0
     best_epoch = 0
     patience_counter = 0
+    
+    best_all_preds = []
+    best_all_targets = []
     
     print("\nMemulai proses training...\n")
     for epoch in range(epochs):
@@ -213,6 +247,8 @@ def train(scenario_id, data_dir, num_workers=0):
             best_val_acc = val_acc
             best_epoch = epoch + 1
             patience_counter = 0
+            best_all_preds = all_preds.copy()
+            best_all_targets = all_targets.copy()
             torch.save(model.state_dict(), best_model_path)
         else:
             patience_counter += 1
@@ -229,17 +265,36 @@ def train(scenario_id, data_dir, num_workers=0):
     # Menggambar dan menyimpan grafik
     plot_history(history, plots_dir)
     
-    # Menampilkan Classification Report dari Epoch Terakhir (Opsional tapi informatif)
-    print("\n--- Laporan Klasifikasi (Epoch Terakhir) ---")
     target_names = ['Hook', 'Jab', 'Straight', 'Uppercut']
-    print(classification_report(all_targets, all_preds, target_names=target_names, zero_division=0))
+    
+    # Menampilkan dan menyimpan Classification Report dari Epoch Terbaik
+    print(f"\n--- Laporan Klasifikasi (Epoch Terbaik: {best_epoch}) ---")
+    best_report = classification_report(best_all_targets, best_all_preds, target_names=target_names, zero_division=0)
+    print(best_report)
+    
+    report_path = os.path.join(logs_dir, 'best_classification_report.txt')
+    with open(report_path, 'w') as f:
+        f.write(f"Classification Report (Best Epoch: {best_epoch})\n")
+        f.write(f"Validation Accuracy: {best_val_acc:.2f}%\n\n")
+        f.write(best_report)
+    print(f"Laporan klasifikasi disimpan di: {report_path}")
+    
+    # Menggambar dan menyimpan Confusion Matrix dari Epoch Terbaik
+    cm = confusion_matrix(best_all_targets, best_all_preds)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=target_names)
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title(f'Confusion Matrix (Epoch {best_epoch})')
+    cm_path = os.path.join(plots_dir, 'confusion_matrix.png')
+    plt.savefig(cm_path)
+    plt.close()
+    print(f"Confusion matrix disimpan di: {cm_path}")
     
     print(f"\nTraining Selesai! Model terbaik (Epoch {best_epoch}) tersimpan di:\n{best_model_path}\nAkurasi Validasi Puncak: {best_val_acc:.2f}%")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="PyTorch BiLSTM Training")
-    parser.add_argument('--scenario', type=int, required=True, choices=[1, 2, 3], 
-                        help="Pilih skenario: 1 (Baseline), 2 (Deep Regularized), atau 3 (Lightweight)")
+    parser.add_argument('--scenario', type=int, required=True, choices=[1, 2, 3, 4, 5], 
+                        help="Pilih skenario: 1-Baseline, 2-Deep, 3-Lightweight, 4-Ultimate(BS16), 5-Ultimate(BS4)")
     parser.add_argument('--data_dir', type=str, default=r"f:\Skripsi\Wahyu\Dataset_Numpy_Normalized",
                         help="Direktori dataset numpy hasil normalisasi")
     parser.add_argument('--num_workers', type=int, default=0,

@@ -1,0 +1,13 @@
+Classification Report (Best Epoch: 14)
+Validation Accuracy: 90.62%
+
+              precision    recall  f1-score   support
+
+        Hook       0.78      1.00      0.88         7
+         Jab       1.00      0.88      0.93         8
+    Straight       1.00      0.88      0.93         8
+    Uppercut       0.89      0.89      0.89         9
+
+    accuracy                           0.91        32
+   macro avg       0.92      0.91      0.91        32
+weighted avg       0.92      0.91      0.91        32

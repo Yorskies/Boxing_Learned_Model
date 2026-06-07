@@ -5,12 +5,15 @@ from tqdm import tqdm
 
 import config
 from video_processor import get_video_frames
-from mediapipe_extractor import extract_keypoints
+from mediapipe_extractor import extract_keypoints, compute_engineered_features
 from sequence_padder import pad_or_truncate_sequence
 from augmentator import horizontal_flip_keypoints, temporal_random_crop, speed_interpolation
 
 def main():
     print("Starting MediaPipe Preprocessing Pipeline...")
+    print(f"  RAW_FEATURE_DIM  = {config.RAW_FEATURE_DIM}")
+    print(f"  ENGINEERED_FEAT  = {config.ENGINEERED_FEATURE_DIM}")
+    print(f"  FEATURE_DIM      = {config.FEATURE_DIM}")
     
     # Iterate through classes
     for cls in config.CLASSES:
@@ -48,27 +51,41 @@ def main():
                 # 1. Load video frames using memory-efficient generator
                 frame_gen = get_video_frames(video_path)
                 
-                # 2. Extract keypoints using MediaPipe
-                sequence = extract_keypoints(frame_gen)
+                # 2. Extract raw keypoints using MediaPipe (N, 132)
+                raw_sequence = extract_keypoints(frame_gen)
                 
-                # --- Temporal Augmentations (Before Padding) ---
-                crop_seq = temporal_random_crop(sequence)
-                crop_seq_standardized = pad_or_truncate_sequence(crop_seq)
+                # ── Augmentations on RAW 132-dim coordinates ──────────────
                 
-                speed_seq = speed_interpolation(sequence)
-                speed_seq_standardized = pad_or_truncate_sequence(speed_seq)
+                # 3a. Temporal augmentation: random crop (before padding)
+                crop_raw = temporal_random_crop(raw_sequence)
                 
-                # 3. Standardize temporal length (Pad/Truncate) for Original
-                standardized_seq = pad_or_truncate_sequence(sequence)
+                # 3b. Temporal augmentation: speed interpolation (before padding)
+                speed_raw = speed_interpolation(raw_sequence)
                 
-                # 4. Create Augmented version (Horizontal Flip) from standardized original
-                augmented_seq = horizontal_flip_keypoints(standardized_seq)
+                # 3c. Spatial augmentation: horizontal flip on raw coordinates
+                flip_raw = horizontal_flip_keypoints(raw_sequence)
                 
-                # 5. Save directly to .npy files to keep memory usage minimal
-                np.save(out_file_orig, standardized_seq)
-                np.save(out_file_aug_flip, augmented_seq)
-                np.save(out_file_aug_crop, crop_seq_standardized)
-                np.save(out_file_aug_speed, speed_seq_standardized)
+                # ── Compute engineered features (132 → 144) ──────────────
+                # Features are computed AFTER augmentations so that angles,
+                # velocities, and stance indicators are derived from the
+                # correctly transformed coordinates.
+                
+                orig_feat  = compute_engineered_features(raw_sequence)   # (N, 144)
+                flip_feat  = compute_engineered_features(flip_raw)       # (N, 144)
+                crop_feat  = compute_engineered_features(crop_raw)       # (M, 144)
+                speed_feat = compute_engineered_features(speed_raw)      # (K, 144)
+                
+                # ── Pad / truncate to standard temporal length ────────────
+                standardized_orig  = pad_or_truncate_sequence(orig_feat)
+                standardized_flip  = pad_or_truncate_sequence(flip_feat)
+                standardized_crop  = pad_or_truncate_sequence(crop_feat)
+                standardized_speed = pad_or_truncate_sequence(speed_feat)
+                
+                # 5. Save directly to .npy files
+                np.save(out_file_orig,      standardized_orig)
+                np.save(out_file_aug_flip,  standardized_flip)
+                np.save(out_file_aug_crop,  standardized_crop)
+                np.save(out_file_aug_speed, standardized_speed)
                 
             except Exception as e:
                 print(f"Error processing video {video_file}: {str(e)}")

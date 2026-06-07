@@ -13,6 +13,7 @@ import json
 import time
 import threading
 import datetime
+from collections import Counter
 import numpy as np
 import cv2
 import torch
@@ -30,7 +31,7 @@ sys.path.insert(0, os.path.join(ROOT_DIR, 'src', 'training'))
 
 from model import AttentionBiLSTM
 from video_processor import get_video_frames
-from mediapipe_extractor import extract_keypoints
+from mediapipe_extractor import extract_keypoints, compute_engineered_features
 from sequence_padder import pad_or_truncate_sequence
 
 # ---------------------------------------------------------------------------
@@ -58,6 +59,10 @@ SCENARIOS = {
         "hidden_size": 128, "num_layers": 2, "dropout": 0.5},
     3: {"name": "Skenario 3: Lightweight (hidden=32, layers=1)",
         "hidden_size": 32, "num_layers": 1, "dropout": 0.2},
+    4: {"name": "Skenario 4: Ultimate (BS=16)",
+        "hidden_size": 64, "num_layers": 1, "dropout": 0.3},
+    5: {"name": "Skenario 5: Ultimate (BS=4) [FINAL]",
+        "hidden_size": 64, "num_layers": 1, "dropout": 0.3},
 }
 
 SUPPORTED_VIDEO = ('.mp4', '.avi', '.mov', '.mkv')
@@ -189,9 +194,9 @@ class PunchClassifierGUI:
 
         row1 = ttk.Frame(sec1); row1.pack(fill=tk.X, pady=2)
         ttk.Label(row1, text="Skenario Model:").pack(side=tk.LEFT)
-        self.scenario_var = tk.StringVar(value="1")
+        self.scenario_var = tk.StringVar(value="5")
         cb_sc = ttk.Combobox(row1, textvariable=self.scenario_var,
-                             values=["1", "2", "3"], width=4, state="readonly")
+                             values=["1", "2", "3", "4", "5"], width=4, state="readonly")
         cb_sc.pack(side=tk.LEFT, padx=8)
         cb_sc.bind("<<ComboboxSelected>>", self._on_scenario_change)
 
@@ -378,7 +383,7 @@ class PunchClassifierGUI:
         self._log(f"Memuat bobot model Skenario {scenario_id} dari '{self.current_result_dir}'…")
         params = SCENARIOS[scenario_id]
         model = AttentionBiLSTM(
-            input_size=132,
+            input_size=144,
             hidden_size=params["hidden_size"],
             num_layers=params["num_layers"],
             num_classes=4,
@@ -448,9 +453,11 @@ class PunchClassifierGUI:
             self._log(f"  Membaca video: {os.path.basename(file_path)}")
             frames = get_video_frames(file_path)
             self._log("  Menjalankan MediaPipe Pose Landmarker…")
-            raw = extract_keypoints(frames)
+            raw = extract_keypoints(frames)              # (N, 132)
             self._log(f"  Berhasil mengekstrak {raw.shape[0]} frame.")
-            seq = pad_or_truncate_sequence(raw)
+            self._log("  Menghitung fitur rekayasa (kinematika & stance)…")
+            feat = compute_engineered_features(raw)       # (N, 144)
+            seq = pad_or_truncate_sequence(feat)
             return seq
         else:
             raise ValueError(f"Format tidak didukung: {ext}")
@@ -465,6 +472,103 @@ class PunchClassifierGUI:
             probs = F.softmax(logits, dim=1).cpu().numpy()[0]
         idx = int(np.argmax(probs))
         return CLASSES[idx], probs[idx] * 100, probs
+
+    # ------------------------------------------------------------------
+    # Sliding Window Classification + Temporal NMS
+    # ------------------------------------------------------------------
+    def _sliding_window_classify(self, raw_keypoints: np.ndarray) -> list:
+        """
+        Perform sliding window classification with window_size=30, stride=1.
+        Each window [i, i+30) is fed to the model and the prediction is
+        assigned to the LAST frame of that window (i+29).  Leading frames
+        that cannot form a full window inherit the first window's prediction.
+
+        Returns
+        -------
+        list of (pred_class, confidence, probs)  – one entry per frame.
+        """
+        window_size = 30  # MAX_TIMESTEPS
+        N = raw_keypoints.shape[0]
+
+        if N <= window_size:
+            padded_seq = pad_or_truncate_sequence(raw_keypoints)
+            pred_class, confidence, probs = self._infer(padded_seq)
+            return [(pred_class, confidence, probs)] * N
+
+        # Run inference for every window position (stride = 1)
+        window_preds = []
+        total_windows = N - window_size + 1
+        for i in range(total_windows):
+            window_seq = raw_keypoints[i:i + window_size]
+            pred_class, confidence, probs = self._infer(window_seq)
+            window_preds.append((pred_class, confidence, probs))
+
+            if (i + 1) % 50 == 0 or i == total_windows - 1:
+                self._log(f"    Window {i + 1}/{total_windows} selesai.")
+
+        # Assign each window's prediction to the last frame of that window
+        frame_preds = [None] * N
+        for i, pred in enumerate(window_preds):
+            frame_preds[i + window_size - 1] = pred
+
+        # Fill leading frames (0 .. window_size-2) with the first window's prediction
+        first_pred = window_preds[0]
+        for i in range(window_size - 1):
+            frame_preds[i] = first_pred
+
+        return frame_preds
+
+    def _apply_temporal_nms(self, frame_predictions: list,
+                            min_segment_frames: int = 10) -> list:
+        """
+        Temporal Non-Maximum Suppression.
+        Short 'burst' segments (fewer than *min_segment_frames* consecutive
+        frames of the same class) are replaced by the prediction of the
+        longer adjacent segment.  This prevents rapid flickering.
+        """
+        if not frame_predictions or len(frame_predictions) < 2:
+            return frame_predictions
+
+        N = len(frame_predictions)
+        result = list(frame_predictions)
+
+        # Iterate until stable (max 5 passes)
+        for _ in range(5):
+            # Identify contiguous segments of same-class predictions
+            segments = []
+            seg_start = 0
+            for i in range(1, N):
+                if result[i][0] != result[seg_start][0]:
+                    segments.append((seg_start, i - 1, result[seg_start][0]))
+                    seg_start = i
+            segments.append((seg_start, N - 1, result[seg_start][0]))
+
+            if len(segments) <= 1:
+                break
+
+            any_change = False
+            for idx, (start, end, cls) in enumerate(segments):
+                duration = end - start + 1
+                if duration < min_segment_frames:
+                    # Pick the longer adjacent segment as donor
+                    prev_len = (segments[idx - 1][1] - segments[idx - 1][0] + 1) if idx > 0 else 0
+                    next_len = (segments[idx + 1][1] - segments[idx + 1][0] + 1) if idx < len(segments) - 1 else 0
+
+                    if prev_len >= next_len and prev_len > 0:
+                        donor_frame = segments[idx - 1][1]    # last frame of prev segment
+                    elif next_len > 0:
+                        donor_frame = segments[idx + 1][0]    # first frame of next segment
+                    else:
+                        continue
+
+                    for f in range(start, end + 1):
+                        result[f] = result[donor_frame]
+                    any_change = True
+
+            if not any_change:
+                break
+
+        return result
 
     # ------------------------------------------------------------------
     # Single inference
@@ -790,6 +894,9 @@ class PunchClassifierGUI:
             rgb_gen = (cv2.cvtColor(f, cv2.COLOR_BGR2RGB) for f in bgr_frames)
             raw_keypoints = extract_keypoints(rgb_gen)  # shape: (N, 132)
             self._log(f"  Keypoints diekstrak: {raw_keypoints.shape}")
+            self._log("  Menghitung fitur rekayasa (kinematika & stance)…")
+            raw_keypoints = compute_engineered_features(raw_keypoints)  # (N, 144)
+            self._log(f"  Fitur total: {raw_keypoints.shape}")
 
             # Also extract RAW (unnormalised) landmarks for visualisation overlay
             # We do a second lightweight pass with MediaPipe to get pixel coordinates
@@ -826,15 +933,31 @@ class PunchClassifierGUI:
                             frame_lms.append((px, py, vis))
                     raw_landmarks.append(frame_lms)
 
-            # ── Phase 2: Classify the whole sequence ──
-            self._log("🎬 [Render] Fase 2: Menjalankan klasifikasi…")
-            padded_seq = pad_or_truncate_sequence(raw_keypoints)
-            pred_class, confidence, probs = self._infer(padded_seq)
-            gt = self._resolve_gt(video_path)
-            self._log(f"  Prediksi: {pred_class} ({confidence:.1f}%)")
+            # ── Phase 2: Sliding Window Classification (stride=1) ──
+            self._log("🎬 [Render] Fase 2: Sliding window klasifikasi (stride=1)…")
+            frame_predictions = self._sliding_window_classify(raw_keypoints)
+            self._log(f"  Raw predictions: {len(frame_predictions)} frame")
 
-            # Update the single-result UI too
-            self.root.after(0, self._update_single_ui, pred_class, confidence, probs, gt)
+            # Apply temporal NMS to remove short flickering segments
+            self._log("  Menerapkan Temporal Non-Maximum Suppression…")
+            frame_predictions = self._apply_temporal_nms(frame_predictions,
+                                                         min_segment_frames=10)
+            self._log("  ✓ NMS selesai.")
+
+            gt = self._resolve_gt(video_path)
+
+            # Compute overall majority-vote prediction for the summary UI
+            class_counts = Counter(p[0] for p in frame_predictions)
+            majority_class = class_counts.most_common(1)[0][0]
+            majority_confs = [p[1] for p in frame_predictions if p[0] == majority_class]
+            majority_conf = sum(majority_confs) / len(majority_confs)
+            majority_probs = np.mean(
+                [p[2] for p in frame_predictions if p[0] == majority_class], axis=0)
+            self._log(f"  Prediksi mayoritas: {majority_class} ({majority_conf:.1f}%)")
+
+            # Update the single-result UI with the majority vote
+            self.root.after(0, self._update_single_ui,
+                            majority_class, majority_conf, majority_probs, gt)
 
             # ── Phase 3: Render and play back ──
             self._log("🎬 [Render] Fase 3: Merender video dengan overlay…")
@@ -853,7 +976,6 @@ class PunchClassifierGUI:
                 writer = cv2.VideoWriter(save_path, fourcc, fps, (width, height))
                 self._log(f"  Video akan disimpan ke: {save_path}")
 
-            pred_color = CLASS_COLORS_BGR.get(pred_class, (255, 255, 255))
             frame_delay_base = 1.0 / fps
             paused = False
             window_name = f"Render: {os.path.basename(video_path)}"
@@ -862,6 +984,10 @@ class PunchClassifierGUI:
                 if not self._is_running:
                     self._log("⏹ Render dihentikan.")
                     break
+
+                # ── Per-frame prediction from sliding window ──
+                pred_class, confidence, probs = frame_predictions[fidx]
+                pred_color = CLASS_COLORS_BGR.get(pred_class, (255, 255, 255))
 
                 canvas = bgr_frame.copy()
 
